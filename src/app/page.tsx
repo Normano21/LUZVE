@@ -13,6 +13,7 @@ import {
   type LocalReport,
   type ReportStatus,
 } from "../lib/reports";
+import { supabase } from "../lib/supabase/client";
 
 const LOCATION_STORAGE_KEY = "luzve-selected-location";
 const REPORTS_STORAGE_KEY = "luzve-local-reports";
@@ -67,6 +68,7 @@ export default function Home() {
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [reportMessage, setReportMessage] = useState("");
+  const [isSubmittingReport, setIsSubmittingReport] = useState(false);
 
   const savedLocation = selection ? getLocationDetails(selection) : null;
   const selectedState = locations.find(
@@ -99,6 +101,37 @@ export default function Home() {
     } catch {
       return;
     }
+  }, []);
+
+  useEffect(() => {
+    async function ensureAnonymousSession() {
+      if (!supabase) {
+        console.error("Faltan las variables públicas de Supabase.");
+        return;
+      }
+
+      const { data, error } = await supabase.auth.getSession();
+
+      if (error) {
+        console.error("No se pudo comprobar la sesión de Supabase.", error);
+        return;
+      }
+
+      if (data.session) {
+        return;
+      }
+
+      const { error: signInError } = await supabase.auth.signInAnonymously();
+
+      if (signInError) {
+        console.error(
+          "No se pudo crear la sesión anónima de Supabase.",
+          signInError,
+        );
+      }
+    }
+
+    void ensureAnonymousSession();
   }, []);
 
   useEffect(() => {
@@ -217,7 +250,7 @@ export default function Home() {
     closeSelector();
   }
 
-  function submitReport(status: ReportStatus) {
+  async function submitReport(status: ReportStatus) {
     if (!selection || !deviceId) {
       return;
     }
@@ -227,18 +260,53 @@ export default function Home() {
       return;
     }
 
-    const nextReport: LocalReport = {
-      id: window.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
-      deviceId,
-      location: selection,
-      status,
-      createdAt: new Date(currentTime).toISOString(),
-    };
-    const nextReports = [nextReport, ...reports];
+    if (!supabase) {
+      console.error("El cliente de Supabase no está disponible.");
+      setReportMessage("No pudimos enviar tu reporte. Inténtalo de nuevo.");
+      return;
+    }
 
-    setReports(nextReports);
-    setReportMessage("Tu reporte fue guardado en este dispositivo.");
-    window.localStorage.setItem(REPORTS_STORAGE_KEY, JSON.stringify(nextReports));
+    const locationDetails = getLocationDetails(selection);
+
+    if (!locationDetails) {
+      console.error("No se encontró la zona seleccionada.");
+      setReportMessage("No pudimos identificar tu zona. Inténtalo de nuevo.");
+      return;
+    }
+
+    setIsSubmittingReport(true);
+
+    try {
+      const { error } = await supabase.rpc("submit_report", {
+        p_zone_id: locationDetails.zone.supabaseId,
+        p_status: status,
+        p_client_event_id: window.crypto.randomUUID(),
+      });
+
+      if (error) {
+        console.error("No se pudo enviar el reporte a Supabase.", error);
+        setReportMessage("No pudimos enviar tu reporte. Inténtalo de nuevo.");
+        return;
+      }
+
+      const nextReport: LocalReport = {
+        id: window.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
+        deviceId,
+        location: selection,
+        status,
+        createdAt: new Date(currentTime).toISOString(),
+      };
+      const nextReports = [nextReport, ...reports];
+
+      setReports(nextReports);
+      setReportMessage("Tu reporte fue enviado correctamente.");
+      window.localStorage.setItem(REPORTS_STORAGE_KEY, JSON.stringify(nextReports));
+    } catch (error) {
+      console.error("Ocurrió un error al enviar el reporte a Supabase.", error);
+      setReportMessage("No pudimos enviar tu reporte. Inténtalo de nuevo.");
+    } finally {
+      setIsSubmittingReport(false);
+    }
   }
 
   const communityTitle = communityIsConfirmed
@@ -337,7 +405,10 @@ export default function Home() {
               onClick={() =>
                 submitReport(communityHasLight ? "NO_HAY_LUZ" : "HAY_LUZ")
               }
-              disabled={communityHasLight ? !canReportNoLight : !canReportLight}
+                disabled={
+                  isSubmittingReport ||
+                  (communityHasLight ? !canReportNoLight : !canReportLight)
+                }
             >
               {communityHasLight ? "SE FUE LA LUZ" : "VOLVIÓ LA LUZ"}
             </button>
@@ -350,7 +421,7 @@ export default function Home() {
                 type="button"
                 className="w-full rounded-2xl bg-emerald-600 px-5 py-4 text-base font-bold text-white transition-colors hover:bg-emerald-500 focus:outline-none focus:ring-4 focus:ring-emerald-200 disabled:cursor-not-allowed disabled:opacity-50"
                 onClick={() => submitReport("HAY_LUZ")}
-                disabled={!canReportLight}
+                disabled={isSubmittingReport || !canReportLight}
               >
                 SÍ, HAY LUZ
               </button>
@@ -358,7 +429,7 @@ export default function Home() {
                 type="button"
                 className="w-full rounded-2xl bg-red-600 px-5 py-4 text-base font-bold text-white transition-colors hover:bg-red-500 focus:outline-none focus:ring-4 focus:ring-red-200 disabled:cursor-not-allowed disabled:opacity-50"
                 onClick={() => submitReport("NO_HAY_LUZ")}
-                disabled={!canReportNoLight}
+                disabled={isSubmittingReport || !canReportNoLight}
               >
                 NO, SE FUE LA LUZ
               </button>

@@ -1,5 +1,6 @@
 export type Zone = {
   id: string;
+  supabaseId: string;
   name: string;
 };
 
@@ -42,14 +43,28 @@ export const locations: State[] = [
             id: "parroquia-prueba-1",
             name: "Parroquia de prueba 1",
             zones: [
-              { id: "zona-prueba-1", name: "Zona de prueba 1" },
-              { id: "zona-prueba-2", name: "Zona de prueba 2" },
+              {
+                id: "zona-prueba-1",
+                supabaseId: "a5f46525-3615-45a3-9b48-9fea92dbfb41",
+                name: "Zona de prueba 1",
+              },
+              {
+                id: "zona-prueba-2",
+                supabaseId: "cca44a01-1c8b-4418-8cd0-3e9eb859259f",
+                name: "Zona de prueba 2",
+              },
             ],
           },
           {
             id: "parroquia-prueba-2",
             name: "Parroquia de prueba 2",
-            zones: [{ id: "zona-prueba-3", name: "Zona de prueba 3" }],
+            zones: [
+              {
+                id: "zona-prueba-3",
+                supabaseId: "22aac32b-8c2c-4cca-9450-114ae402e1c0",
+                name: "Zona de prueba 3",
+              },
+            ],
           },
         ],
       },
